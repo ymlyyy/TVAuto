@@ -1,7 +1,6 @@
 package xyz.mulin.tvauto.player;
 
 import android.content.Context;
-import android.os.Build;
 import android.text.TextUtils;
 import android.util.Log;
 
@@ -14,6 +13,8 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
+
+import xyz.mulin.tvauto.util.DeviceAbiUtils;
 
 public final class OfflineX5CoreInstaller {
     public interface Listener {
@@ -78,7 +79,7 @@ public final class OfflineX5CoreInstaller {
     private static void installBundledCore(Context context, Listener listener) {
         String abiDir = resolveAbiDir();
         if (abiDir == null) {
-            listener.onUnsupportedAbi(TextUtils.join(", ", Build.SUPPORTED_ABIS));
+            listener.onUnsupportedAbi(TextUtils.join(", ", DeviceAbiUtils.getSupportedAbis()));
             return;
         }
 
@@ -98,7 +99,7 @@ public final class OfflineX5CoreInstaller {
     }
 
     private static String resolveAbiDir() {
-        for (String abi : Build.SUPPORTED_ABIS) {
+        for (String abi : DeviceAbiUtils.getSupportedAbis()) {
             if ("arm64-v8a".equals(abi)) return "arm64_v8a";
             if ("armeabi-v7a".equals(abi) || "armeabi".equals(abi)) return "armeabi_v7a";
         }

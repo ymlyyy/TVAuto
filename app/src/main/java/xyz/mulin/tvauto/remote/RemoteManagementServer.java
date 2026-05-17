@@ -250,7 +250,8 @@ public final class RemoteManagementServer extends Thread {
             );
         }
 
-        int contentLength = Integer.parseInt(headers.getOrDefault("content-length", "0"));
+        String contentLengthHeader = headers.get("content-length");
+        int contentLength = Integer.parseInt(contentLengthHeader != null ? contentLengthHeader : "0");
         byte[] body = new byte[contentLength];
         int totalRead = 0;
         while (totalRead < contentLength) {

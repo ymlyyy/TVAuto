@@ -1,4 +1,4 @@
-plugins {
+﻿plugins {
     alias(libs.plugins.android.application)
 }
 
@@ -8,7 +8,7 @@ android {
 
     defaultConfig {
         applicationId = "mulin.tvauto.pro.x5"
-        minSdk = 21
+        minSdk = 19
         targetSdk = 35
         versionCode = 60
         versionName = "6.0-x5"

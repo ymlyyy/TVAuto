@@ -4,7 +4,6 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -22,6 +21,7 @@ import com.tencent.smtt.sdk.QbSdk;
 import com.tencent.smtt.sdk.WebView;
 
 import xyz.mulin.tvauto.player.OfflineX5CoreInstaller;
+import xyz.mulin.tvauto.util.DeviceAbiUtils;
 
 public class X5BootstrapActivity extends AppCompatActivity {
     private static final String TAG = "X5Bootstrap";
@@ -196,7 +196,7 @@ public class X5BootstrapActivity extends AppCompatActivity {
         detailText.setText(
                 "SDK 版本：" + sdkVersion + "\n"
                         + "内核版本：" + coreVersion + "\n"
-                        + "设备 ABI：" + TextUtils.join(", ", Build.SUPPORTED_ABIS) + "\n\n"
+                        + "设备 ABI：" + TextUtils.join(", ", DeviceAbiUtils.getSupportedAbis()) + "\n\n"
                         + "诊断：\n" + help
         );
     }
