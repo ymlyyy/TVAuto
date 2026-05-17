@@ -1,10 +1,9 @@
 package xyz.mulin.tvauto;
 
-import android.app.Application;
-
 import androidx.appcompat.app.AppCompatDelegate;
+import androidx.multidex.MultiDexApplication;
 
-public class NightApplication extends Application {
+public class NightApplication extends MultiDexApplication {
     @Override
     public void onCreate() {
         super.onCreate();

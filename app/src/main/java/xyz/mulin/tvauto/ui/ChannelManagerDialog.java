@@ -27,6 +27,10 @@ public final class ChannelManagerDialog {
         void onDeleteCurrentChannel();
 
         void onCheckUpdates();
+
+        void onOpenX5Manager();
+
+        void onOpenRawWebPage();
     }
 
     private ChannelManagerDialog() {
@@ -158,6 +162,10 @@ public final class ChannelManagerDialog {
         MaterialButton updateBtn = createCompactButton(context, "更新检测", "#5C6F82");
         panel.addView(createButtonPairRow(context, deleteBtn, updateBtn));
 
+        MaterialButton rawWebBtn = createCompactButton(context, "原始网页", "#4A5D72");
+        MaterialButton x5Btn = createCompactButton(context, "X5 管理", "#445C82");
+        panel.addView(createButtonPairRow(context, rawWebBtn, x5Btn));
+
         TextView info = new TextView(context);
         info.setText(R.string.tvauto_v);
         info.setTextColor(Color.LTGRAY);
@@ -170,6 +178,8 @@ public final class ChannelManagerDialog {
         ));
         deleteBtn.setOnClickListener(v -> listener.onDeleteCurrentChannel());
         updateBtn.setOnClickListener(v -> listener.onCheckUpdates());
+        rawWebBtn.setOnClickListener(v -> listener.onOpenRawWebPage());
+        x5Btn.setOnClickListener(v -> listener.onOpenX5Manager());
 
         return panel;
     }

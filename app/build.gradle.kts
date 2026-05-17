@@ -7,11 +7,12 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "mulin.tvauto.pro"
-        minSdk = 19
+        applicationId = "mulin.tvauto.pro.x5"
+        minSdk = 21
         targetSdk = 35
-        versionCode = 50
-        versionName = "5.0"
+        versionCode = 60
+        versionName = "6.0-x5"
+        multiDexEnabled = true
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -38,6 +39,8 @@ dependencies {
     implementation(libs.appcompat)
     implementation(libs.material)
     implementation("com.google.zxing:core:3.5.3")
+    implementation("com.tencent.tbs:tbssdk:44286")
+    implementation("androidx.multidex:multidex:2.0.1")
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)

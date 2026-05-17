@@ -2,12 +2,18 @@ package xyz.mulin.tvauto.player;
 
 import android.annotation.SuppressLint;
 import android.graphics.Bitmap;
-import android.util.Base64;
+import android.os.Build;
 import android.util.Log;
-import android.webkit.WebChromeClient;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
+import android.view.View;
+
+import com.tencent.smtt.sdk.WebChromeClient;
+import com.tencent.smtt.sdk.WebSettings;
+import com.tencent.smtt.sdk.WebView;
+import com.tencent.smtt.sdk.WebViewClient;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 
 import xyz.mulin.tvauto.model.UserScript;
 
@@ -23,6 +29,8 @@ public final class TvWebViewController {
     private final WebView webView;
     private final CurrentUrlProvider currentUrlProvider;
     private final UserScriptProvider userScriptProvider;
+    private boolean scriptInjectionEnabled = true;
+    private boolean rawWebMode = false;
 
     public TvWebViewController(
             WebView webView,
@@ -48,11 +56,9 @@ public final class TvWebViewController {
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setUserAgentString("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36");
 
-        webView.setOnTouchListener((v, event) -> true);
-        webView.setOnKeyListener((v, keyCode, event) -> true);
-        webView.setOnGenericMotionListener((v, event) -> true);
-        webView.setFocusable(false);
-        webView.setFocusableInTouchMode(false);
+        applyPlaybackInteractionPolicy();
+        disableDefaultFocusHighlight(webView);
+        disableDefaultFocusHighlight(webView.getView());
         webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {
 
@@ -86,6 +92,13 @@ public final class TvWebViewController {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
+                if (rawWebMode) {
+//                    applyRawWebPageZoom(view);
+                    return;
+                }
+                if (!scriptInjectionEnabled) {
+                    return;
+                }
                 view.evaluateJavascript(
                         "Boolean(window.__TVAUTO_USER_SCRIPT_INJECTED__ || window.__VIDEO_RESIZE_INJECTED__)",
                         value -> {
@@ -100,7 +113,60 @@ public final class TvWebViewController {
         });
     }
 
+    public void enterRawWebMode() {
+        scriptInjectionEnabled = false;
+        rawWebMode = true;
+        WebSettings settings = webView.getSettings();
+        settings.setSupportZoom(true);
+        settings.setBuiltInZoomControls(true);
+        settings.setDisplayZoomControls(false);
+        webView.setOnTouchListener(null);
+        webView.setOnKeyListener(null);
+        webView.setOnGenericMotionListener(null);
+        webView.setFocusable(true);
+        webView.setFocusableInTouchMode(true);
+        disableDefaultFocusHighlight(webView);
+        disableDefaultFocusHighlight(webView.getView());
+        webView.requestFocus();
+    }
+
+    public void exitRawWebMode() {
+        scriptInjectionEnabled = true;
+        rawWebMode = false;
+        WebSettings settings = webView.getSettings();
+        settings.setSupportZoom(false);
+        settings.setBuiltInZoomControls(false);
+        settings.setDisplayZoomControls(false);
+        applyPlaybackInteractionPolicy();
+    }
+
+    private void applyPlaybackInteractionPolicy() {
+        webView.setOnTouchListener((v, event) -> true);
+        webView.setOnKeyListener((v, keyCode, event) -> true);
+        webView.setOnGenericMotionListener((v, event) -> true);
+        webView.setFocusable(false);
+        webView.setFocusableInTouchMode(false);
+    }
+
+    private void disableDefaultFocusHighlight(View view) {
+        if (view != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            view.setDefaultFocusHighlightEnabled(false);
+        }
+    }
+
+    private void applyRawWebPageZoom(WebView view) {
+        String js =
+                "(function(){" +
+                        "document.documentElement.style.zoom='0.75';" +
+                        "if(document.body){document.body.style.zoom='0.75';}" +
+                        "})();";
+        view.evaluateJavascript(js, null);
+    }
+
     private void injectPreferredScript(WebView view, String pageUrl) {
+        if (!scriptInjectionEnabled) {
+            return;
+        }
         UserScript userScript = userScriptProvider.findMatchingScript(pageUrl);
         if (userScript != null) {
             injectUserScript(view, userScript);
@@ -119,18 +185,30 @@ public final class TvWebViewController {
                         "})();";
         view.evaluateJavascript(wrappedScript, null);
     }
-    // 注入 JavaScript  (全屏)
+
+    // ????????????
     private void injectVideoResizeJs(WebView view) {
-        String c = currentUrlProvider.getCurrentUrl();
-        if (!c.startsWith("file:///") && !c.startsWith("https://test.ustc.edu.cn/")) {
-            String encodedJs ="KGZ1bmN0aW9uKCkgewogICAgdmFyIGxheWVySWQgPSAndHZhdXRvX2xvYWRpbmdfbGF5ZXInOwogICAgaWYgKCFkb2N1bWVudC5nZXRFbGVtZW50QnlJZChsYXllcklkKSkgewogICAgICAgIHZhciBjc3MgPSBgCiAgICAgICAgICAgIEBrZXlmcmFtZXMgcHVsc2VKdW1wIHsKICAgICAgICAgICAgICAgIDAlLCAxMDAlIHsgdHJhbnNmb3JtOiB0cmFuc2xhdGVZKDApIHNjYWxlKDEpOyB9CiAgICAgICAgICAgICAgICAzMCUgeyB0cmFuc2Zvcm06IHRyYW5zbGF0ZVkoLTAuMTJlbSkgc2NhbGUoMS4wMyk7IH0KICAgICAgICAgICAgICAgIDYwJSB7IHRyYW5zZm9ybTogdHJhbnNsYXRlWSgwLjAyZW0pIHNjYWxlKDAuOTgpOyB9CiAgICAgICAgICAgIH0KICAgICAgICAgICAgIyR7bGF5ZXJJZH0gewogICAgICAgICAgICAgICAgcG9zaXRpb246IGZpeGVkOyB0b3A6IDA7IGxlZnQ6IDA7IHJpZ2h0OiAwOyBib3R0b206IDA7CiAgICAgICAgICAgICAgICB3aWR0aDogMTAwdnc7IGhlaWdodDogMTAwdmg7CiAgICAgICAgICAgICAgICBiYWNrZ3JvdW5kOiAjMDAwMDAwOyAKICAgICAgICAgICAgICAgIHotaW5kZXg6IDIxNDc0ODM2NDc7IAogICAgICAgICAgICAgICAgZGlzcGxheTogZmxleDsganVzdGlmeS1jb250ZW50OiBjZW50ZXI7IGFsaWduLWl0ZW1zOiBjZW50ZXI7CiAgICAgICAgICAgICAgICBwb2ludGVyLWV2ZW50czogbm9uZTsKICAgICAgICAgICAgICAgIHRyYW5zaXRpb246IG9wYWNpdHkgMC4zczsKICAgICAgICAgICAgICAgIHRyYW5zZm9ybTogbm9uZSAhaW1wb3J0YW50OwogICAgICAgICAgICAgICAgbWFyZ2luOiAwICFpbXBvcnRhbnQ7CiAgICAgICAgICAgICAgICBwYWRkaW5nOiAwICFpbXBvcnRhbnQ7CiAgICAgICAgICAgICAgICBib3gtc2l6aW5nOiBib3JkZXItYm94OwogICAgICAgICAgICB9CiAgICAgICAgICAgIC50di10ZXh0LWNvbnRhaW5lciB7CiAgICAgICAgICAgICAgICBmb250LWZhbWlseTogc2Fucy1zZXJpZjsgZm9udC13ZWlnaHQ6IDkwMDsgZm9udC1zaXplOiA1dnc7CiAgICAgICAgICAgICAgICBkaXNwbGF5OiBmbGV4OyB3aGl0ZS1zcGFjZTogbm93cmFwOyBsZXR0ZXItc3BhY2luZzogMC4wNWVtOwogICAgICAgICAgICAgICAgdHJhbnNmb3JtOiBub25lOwogICAgICAgICAgICB9CiAgICAgICAgICAgIC50di1jaGFyIHsKICAgICAgICAgICAgICAgIGRpc3BsYXk6IGlubGluZS1ibG9jazsKICAgICAgICAgICAgICAgIGFuaW1hdGlvbjogcHVsc2VKdW1wIDAuOHMgaW5maW5pdGUgZWFzZS1vdXQ7CiAgICAgICAgICAgIH0KICAgICAgICBgOwogICAgICAgIHZhciBzdHlsZSA9IGRvY3VtZW50LmNyZWF0ZUVsZW1lbnQoJ3N0eWxlJyk7CiAgICAgICAgc3R5bGUuYXBwZW5kQ2hpbGQoZG9jdW1lbnQuY3JlYXRlVGV4dE5vZGUoY3NzKSk7CiAgICAgICAgZG9jdW1lbnQuaGVhZC5hcHBlbmRDaGlsZChzdHlsZSk7CgogICAgICAgIHZhciBsYXllciA9IGRvY3VtZW50LmNyZWF0ZUVsZW1lbnQoJ2RpdicpOwogICAgICAgIGxheWVyLmlkID0gbGF5ZXJJZDsKICAgICAgICBsYXllci5pbm5lckhUTUwgPSBgCiAgICAgICAgICAgIDxkaXYgY2xhc3M9InR2LXRleHQtY29udGFpbmVyIj4KICAgICAgICAgICAgICAgIDxzcGFuIGNsYXNzPSJ0di1jaGFyIiBzdHlsZT0iY29sb3I6IzMzMzgzQzsgYW5pbWF0aW9uLWRlbGF5OjBzIj5UPC9zcGFuPgogICAgICAgICAgICAgICAgPHNwYW4gY2xhc3M9InR2LWNoYXIiIHN0eWxlPSJjb2xvcjojMzMzODNDOyBhbmltYXRpb24tZGVsYXk6MC4wNHMiPlY8L3NwYW4+CiAgICAgICAgICAgICAgICA8c3BhbiBjbGFzcz0idHYtY2hhciIgc3R5bGU9ImNvbG9yOiMwMDc5RkI7IGFuaW1hdGlvbi1kZWxheTowLjA4cyI+QTwvc3Bhbj4KICAgICAgICAgICAgICAgIDxzcGFuIGNsYXNzPSJ0di1jaGFyIiBzdHlsZT0iY29sb3I6IzAwNzlGQjsgYW5pbWF0aW9uLWRlbGF5OjAuMTJzIj51PC9zcGFuPgogICAgICAgICAgICAgICAgPHNwYW4gY2xhc3M9InR2LWNoYXIiIHN0eWxlPSJjb2xvcjojMDA3OUZCOyBhbmltYXRpb24tZGVsYXk6MC4xNnMiPnQ8L3NwYW4+CiAgICAgICAgICAgICAgICA8c3BhbiBjbGFzcz0idHYtY2hhciIgc3R5bGU9ImNvbG9yOiMwMDc5RkI7IGFuaW1hdGlvbi1kZWxheTowLjIwcyI+bzwvc3Bhbj4KICAgICAgICAgICAgPC9kaXY+YDsKICAgICAgICBkb2N1bWVudC5kb2N1bWVudEVsZW1lbnQuYXBwZW5kQ2hpbGQobGF5ZXIpOwogICAgfQoKICAgIGZ1bmN0aW9uIHNob3dMb2FkaW5nKCkgewogICAgICAgIHZhciBlbCA9IGRvY3VtZW50LmdldEVsZW1lbnRCeUlkKGxheWVySWQpOwogICAgICAgIGlmIChlbCkgeyBlbC5zdHlsZS5vcGFjaXR5ID0gJzEnOyBlbC5zdHlsZS5kaXNwbGF5ID0gJ2ZsZXgnOyB9CiAgICB9CiAgICBmdW5jdGlvbiBoaWRlTG9hZGluZygpIHsKICAgICAgICB2YXIgZWwgPSBkb2N1bWVudC5nZXRFbGVtZW50QnlJZChsYXllcklkKTsKICAgICAgICBpZiAoZWwpIHsgCiAgICAgICAgICAgIGVsLnN0eWxlLm9wYWNpdHkgPSAnMCc7IAogICAgICAgICAgICBzZXRUaW1lb3V0KCgpID0+IHsgaWYoZWwuc3R5bGUub3BhY2l0eSA9PT0gJzAnKSBlbC5zdHlsZS5kaXNwbGF5ID0gJ25vbmUnOyB9LCAzMDApOwogICAgICAgIH0KICAgIH0KCiAgICBzaG93TG9hZGluZygpOwoKICAgIHdpbmRvdy5fX1ZJREVPX1JFU0laRV9JTkpFQ1RFRF9fID0gdHJ1ZTsKICAgIHZhciB1cmwgPSB3aW5kb3cubG9jYXRpb24uaHJlZi50b0xvd2VyQ2FzZSgpOwogICAgdmFyIGNvbnRhaW5zRG91eXUgPSB1cmwuaW5jbHVkZXMoJ2RvdXl1Jyk7CiAgICB2YXIgY29udGFpbnNNM3U4ID0gdXJsLmluY2x1ZGVzKCcubTN1OCcpOwogICAgdmFyIGNvbnRhaW5zTTN1ID0gdXJsLmluY2x1ZGVzKCcubTN1Jyk7CiAgICB2YXIgY29udGFpbnNIdXlhID0gdXJsLmluY2x1ZGVzKCdodXlhJyk7CiAgICB2YXIgbmVlZFNjYWxlSGFsZiA9ICEoY29udGFpbnNEb3V5dSB8fCBjb250YWluc00zdTggfHwgY29udGFpbnNNM3UgfHwgY29udGFpbnNIdXlhKTsKICAgIGxldCBjb3VudCA9IDA7CgogICAgdmFyIGludGVydmFsID0gc2V0SW50ZXJ2YWwoZnVuY3Rpb24oKSB7CiAgICAgICAgY29uc29sZS5sb2coIm9uUGFnZVN0YXJ0ZWQtPiBnZXRfdmlkZW8iKTsKICAgICAgICB2YXIgdmlkZW8gPSBkb2N1bWVudC5xdWVyeVNlbGVjdG9yKCd2aWRlbycpOwogICAgICAgIAogICAgICAgIGlmICh2aWRlbykgewogICAgICAgICAgICBpZiAoIXZpZGVvLmdldEF0dHJpYnV0ZSgnZGF0YS10dmF1dG8tYm91bmQnKSkgewogICAgICAgICAgICAgICAgdmlkZW8uYWRkRXZlbnRMaXN0ZW5lcignd2FpdGluZycsIHNob3dMb2FkaW5nKTsKICAgICAgICAgICAgICAgIHZpZGVvLmFkZEV2ZW50TGlzdGVuZXIoJ2xvYWRzdGFydCcsIHNob3dMb2FkaW5nKTsKICAgICAgICAgICAgICAgIHZpZGVvLmFkZEV2ZW50TGlzdGVuZXIoJ3NlZWtpbmcnLCBzaG93TG9hZGluZyk7CiAgICAgICAgICAgICAgICB2aWRlby5hZGRFdmVudExpc3RlbmVyKCdwbGF5aW5nJywgaGlkZUxvYWRpbmcpOwogICAgICAgICAgICAgICAgdmlkZW8uYWRkRXZlbnRMaXN0ZW5lcignY2FucGxheScsIGhpZGVMb2FkaW5nKTsKICAgICAgICAgICAgICAgIHZpZGVvLmFkZEV2ZW50TGlzdGVuZXIoJ3NlZWtlZCcsIGhpZGVMb2FkaW5nKTsKICAgICAgICAgICAgICAgIHZpZGVvLnNldEF0dHJpYnV0ZSgnZGF0YS10dmF1dG8tYm91bmQnLCAndHJ1ZScpOwogICAgICAgICAgICB9CiAgICAgICAgICAgIGRvY3VtZW50LmJvZHkuc3R5bGUudHJhbnNmb3JtT3JpZ2luID0gJ3RvcCBsZWZ0JzsKCiAgICAgICAgICAgIGlmIChuZWVkU2NhbGVIYWxmKSB7CiAgICAgICAgICAgICAgICBkb2N1bWVudC5ib2R5LnN0eWxlLnRyYW5zZm9ybSA9ICdzY2FsZSgwLjUpJzsKICAgICAgICAgICAgICAgIHZpZGVvLnN0eWxlLndpZHRoID0gJ2NhbGMoMjAwdmggKiAxNiAvIDkpJzsKICAgICAgICAgICAgICAgIHZpZGVvLnN0eWxlLmhlaWdodCA9ICcyMDB2aCc7CiAgICAgICAgICAgIH0gZWxzZSB7CiAgICAgICAgICAgICAgICBkb2N1bWVudC5ib2R5LnN0eWxlLnRyYW5zZm9ybSA9ICcnOwogICAgICAgICAgICAgICAgdmlkZW8uc3R5bGUud2lkdGggPSAnY2FsYygxMDB2aCAqIDE2IC8gOSknOwogICAgICAgICAgICAgICAgdmlkZW8uc3R5bGUuaGVpZ2h0ID0gJzEwMHZoJzsKICAgICAgICAgICAgfQoKICAgICAgICAgICAgdmlkZW8uc3R5bGUucG9zaXRpb24gPSAnZml4ZWQnOwogICAgICAgICAgICB2aWRlby5zdHlsZS50b3AgPSAnMCc7CiAgICAgICAgICAgIHZpZGVvLnN0eWxlLmxlZnQgPSAnMCc7CiAgICAgICAgICAgIHZpZGVvLnN0eWxlLm9iamVjdEZpdCA9ICdjb3Zlcic7CiAgICAgICAgICAgIHZpZGVvLnN0eWxlLnpJbmRleCA9ICc5OTk5JzsKICAgICAgICAgICAgdmlkZW8uc3R5bGUuYmFja2dyb3VuZENvbG9yID0gJ2JsYWNrJzsKICAgICAgICAgICAgdmlkZW8ubXV0ZWQgPSBmYWxzZTsKICAgICAgICAgICAgdmlkZW8udm9sdW1lID0gMS4wOwogICAgICAgICAgICB2aWRlby5wbGF5KCk7CiAgICAgICAgICAgIAogICAgICAgICAgICBsZXQgZWwgPSB2aWRlbzsKICAgICAgICAgICAgd2hpbGUgKGVsKSB7CiAgICAgICAgICAgICAgICBlbC5zdHlsZS5vdmVyZmxvdyA9ICd2aXNpYmxlJzsKICAgICAgICAgICAgICAgIGlmIChlbC5zdHlsZSAmJiBlbCAhPT0gZG9jdW1lbnQuYm9keSkgZWwuc3R5bGUuekluZGV4ID0gJzk5OTknOwogICAgICAgICAgICAgICAgZWwgPSBlbC5wYXJlbnRFbGVtZW50OwogICAgICAgICAgICB9CiAgICAgICAgICAgIGlmICghdmlkZW8ucGF1c2VkICYmIHZpZGVvLnJlYWR5U3RhdGUgPj0gMyAmJiB2aWRlby5tb3pIYXNBdWRpbyAhPT0gZmFsc2UpIHsKICAgICAgICAgICAgICAgIGNvbnNvbGUubG9nKCJvblBhZ2VTdGFydGVkLT4g5aSE55CG5a6M5oiQIik7CiAgICAgICAgICAgICAgICBoaWRlTG9hZGluZygpOwogICAgICAgICAgICAgICAgY2xlYXJJbnRlcnZhbChpbnRlcnZhbCk7CiAgICAgICAgICAgIH0KICAgICAgICAgICAgY291bnQrKzsKICAgICAgICAgICAgaWYoY291bnQgPiAxMCl7CiAgICAgICAgICAgICAgICBjb25zb2xlLmxvZygib25QYWdlU3RhcnRlZC0+IOi2heaXtuiHquWKqOWFs+mXreWumuaXtuWZqCIpOwogICAgICAgICAgICAgICAgY2xlYXJJbnRlcnZhbChpbnRlcnZhbCk7CiAgICAgICAgICAgIH0KICAgICAgICB9IGVsc2UgewogICAgICAgICAgICBzaG93TG9hZGluZygpOwogICAgICAgIH0KICAgIH0sIDUwMCk7Cn0pKCk7";
+        String currentUrl = currentUrlProvider.getCurrentUrl();
+        if (!currentUrl.startsWith("file:///") && !currentUrl.startsWith("https://test.ustc.edu.cn/")) {
             try {
-                byte[] decodedBytes = Base64.decode(encodedJs, Base64.DEFAULT);
-                String jsCode = new String(decodedBytes);
-                view.evaluateJavascript(jsCode, null);
+                view.evaluateJavascript(readAssetText("js/default_video_resize.js"), null);
             } catch (Exception e) {
-                e.printStackTrace();
+                Log.e("TJS", "??????????", e);
             }
         }
+    }
+
+    private String readAssetText(String assetPath) throws Exception {
+        StringBuilder builder = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                webView.getContext().getAssets().open(assetPath),
+                StandardCharsets.UTF_8
+        ))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                builder.append(line).append('\n');
+            }
+        }
+        return builder.toString();
     }
 }
